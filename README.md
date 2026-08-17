@@ -55,12 +55,12 @@ python atf.py
 
 Jika `config.json` belum ada, bot akan membuatnya otomatis.
 
-Isi bagian Telegram:
+Jika inging mengganti bagian Telegram:
 
 ```json
 "telegram": {
-    "api_id": 12345678,
-    "api_hash": "ISI_API_HASH_TELEGRAM"
+    "api_id": 224069,
+    "api_hash": "f2ddfd53867f28a3b6b98e80fa010e9d"
 }
 ```
 
