@@ -167,28 +167,46 @@ Telegram WebApp • Repeatable Tasks • Live Dashboard
 │ ACCOUNT    │ ACTIVITY         │ STATUS   │ DETAIL                      │
 ├────────────┼──────────────────┼──────────┼─────────────────────────────┤
 │ acc_001    │ TELEGRAM SESSION │ OK       │ Session aktif               │
-│ acc_001    │ LOGIN            │ SUCCESS  │ Query lama valid             │
-│ acc_001    │ MINING           │ SUCCESS  │ +0.1234 ATF                  │
-│ acc_001    │ BOOST            │ SUCCESS  │ 2x | Target=YES              │
-│ acc_001    │ ONE-TIME TASK    │ SUCCESS  │ youtube_subscribe             │
-│ acc_001    │ REPEAT TASK      │ SUCCESS  │ Visit website                │
-│ acc_001    │ REPEAT TASK      │ SUCCESS  │ YouTube like/comment         │
-│ acc_001    │ REPEAT TASK      │ SUCCESS  │ Twitter retweet              │
-│ acc_001    │ REPEAT TASK      │ SUCCESS  │ React to latest post         │
-│ acc_001    │ BALANCE          │ SUCCESS  │ 10.0000 -> 10.2500 ATF       │
-│ acc_001    │ NEXT CYCLE       │ WAIT     │ Cycle berikutnya 59:42       │
+│ acc_001    │ LOGIN            │ SUCCESS  │ Query lama valid            │
+│ acc_001    │ MINING           │ SUCCESS  │ +0.1234 ATF                 │
+│ acc_001    │ BOOST            │ SUCCESS  │ 2x | Target=YES             │
+│ acc_001    │ ONE-TIME TASK    │ SUCCESS  │ youtube_subscribe           │
+│ acc_001    │ REPEAT TASK      │ SUCCESS  │ Visit website               │
+│ acc_001    │ REPEAT TASK      │ SUCCESS  │ YouTube like/comment        │
+│ acc_001    │ REPEAT TASK      │ SUCCESS  │ Twitter retweet             │
+│ acc_001    │ REPEAT TASK      │ SUCCESS  │ React to latest post        │
+│ acc_001    │ BALANCE          │ SUCCESS  │ 10.0000 -> 10.2500 ATF      │
+│ acc_001    │ NEXT CYCLE       │ WAIT     │ Cycle berikutnya 59:42      │
 └────────────┴──────────────────┴──────────┴─────────────────────────────┘
 ```
 
 Setiap **REPEAT TASK memiliki baris sendiri**, sehingga tidak saling menimpa.
 
-## ⚡ Perintah Paling Sederhana
 
-Kalau `config.json` sudah benar:
+# 🛑 Stop Bot
 
-```bash
-pip install telethon httpx rich
-python atf.py
+Tekan:
+
+```text
+CTRL + C
 ```
 
-Selesai. 🚀
+Bot akan menghentikan proses yang sedang berjalan.
+
+---
+
+## ⭐ Support
+
+Jika project ini bermanfaat, silakan ⭐ repository.
+
+## Buy Me a Coffee
+EVM: 
+```
+0x4b05cad2a8e10dfde15d0ec4239bcb94e107ccbc
+```
+SOL:
+```
+Gj5FcTN93KLMQBmB6NbYMYe5kMZH5hgW8wjsg8dk8gse
+```
+
+**Happy Testing! 🚀**
