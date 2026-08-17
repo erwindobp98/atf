@@ -1,6 +1,33 @@
+# 🚀 ATF Mining Bot
+
+Bot otomatis untuk ATF Mining menggunakan Telegram WebApp.
+
+## ✨ Fitur
+
+- 🔐 Login Telegram menggunakan Telethon
+- 💾 Auto-save Telegram session
+- 🔑 Auto mengambil WebApp Query
+- 💾 Query disimpan di `queries.txt`
+- 🔄 Auto refresh query jika invalid
+- ⛏️ Auto start mining
+- 💰 Auto claim mining
+- ⚡ Auto boost mining
+- 🎯 One-Time Task
+- 🔁 Repeatable Task
+- 🌐 Website Visit
+- ▶️ YouTube Like/Comment
+- 𝕏 Twitter Retweet
+- 🔥 Telegram React Latest Post
+- 📢 Telegram Join Channel
+- 💵 Auto refresh balance
+- 🔄 Auto cycle
+- 👥 Multi-account
+- 📊 Live terminal dashboard
+- 💾 State setiap account disimpan otomatis
+
 # ▶️ Cara Menjalankan ATF Bot
 
-Pastikan struktur folder seperti ini:
+Struktur folder final :
 
 ```text
 atf/
@@ -11,27 +38,17 @@ atf/
 └── data/
 ```
 
-## 1. Install Python
-
-Gunakan **Python 3.10 atau lebih baru**.
-
-Cek versi Python:
-
-```bash
-python --version
+## 1. Clone folder
+```
+git clone https://github.com/erwindobp98/atf.git
 ```
 
 ## 2. Install Dependency
-
-Buka **CMD / PowerShell** di folder bot:
-
-```bash
+```
 pip install telethon httpx rich
 ```
-
 ## 3. Jalankan Bot
-
-```bash
+```
 python atf.py
 ```
 
