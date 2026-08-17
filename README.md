@@ -1,7 +1,5 @@
 # 🚀 ATF Mining Bot
 
-Bot otomatis untuk ATF Mining menggunakan Telegram WebApp.
-
 ## ✨ Fitur
 
 - 🔐 Login Telegram menggunakan Telethon
