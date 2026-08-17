@@ -39,6 +39,7 @@ atf/
 ## 1. Clone folder
 ```
 git clone https://github.com/erwindobp98/atf.git
+cd atf
 ```
 
 ## 2. Install Dependency
