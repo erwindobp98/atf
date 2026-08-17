@@ -1,0 +1,39 @@
+{
+  "telegram": {
+    "api_id": 12345678,
+    "api_hash": "ISI_API_HASH_TELEGRAM"
+  },
+  "bot": {
+    "username": "ATF_AIRDROP_bot",
+    "base_url": "https://atfminers.asloni.online/miner",
+    "webapp_url": "https://atfminers.asloni.online/miner/index.html"
+  },
+  "cycle": {
+    "interval_seconds": 3600,
+    "task_verify_wait": 35,
+    "boost_target_hours": 24,
+    "max_boosts": 8,
+    "boost_delay": 10,
+    "task_wait_threshold_minutes": 12,
+    "request_timeout": 30,
+    "retry_count": 3
+  },
+  "tasks": {
+    "repeatable": [
+      "website_visit",
+      "youtube_like_comment",
+      "twitter_retweet",
+      "telegram_react_latest"
+    ],
+    "one_time": [
+      "youtube_subscribe",
+      "twitter_follow",
+      "telegram_join",
+      "telegram_join_fa"
+    ],
+    "telegram_channels": {
+      "telegram_join": "AI_TRADING_FOREX",
+      "telegram_join_fa": "ATFFARSI"
+    }
+  }
+}
