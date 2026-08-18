@@ -159,25 +159,23 @@ Dashboard akan berjalan **bergulir di tempat**, bukan mencetak dashboard baru te
 
 Contohnya:
 
-```text
-🚀 ATF MINING BOT
-Telegram WebApp • Repeatable Tasks • Live Dashboard
+```                                                         📊 ATF MINING BOT DASHBOARD
+╭─────────────┬────────────────────┬──────────────┬────────────────────────────────────────────────────────╮
+│ ACCOUNT     │ ACTIVITY           │ STATUS       │ DETAIL                                                 │
+├─────────────┼────────────────────┼──────────────┼────────────────────────────────────────────────────────┤
+│ acc_001     │ ACCOUNT            │ READY        │ Bal=276.5240 ATF | Pend=0.0000 | Lvl=42                │
+├─────────────┼────────────────────┼──────────────┼────────────────────────────────────────────────────────┤
+│             │ MINING             │ WAIT         │ Proses selesai, menunggu cycle berikutnya              │
+├─────────────┼────────────────────┼──────────────┼────────────────────────────────────────────────────────┤
+│             │ NEXT CYCLE         │ WAIT         │ Cycle berikutnya dalam 59:42                           │
+├─────────────┼────────────────────┼──────────────┼────────────────────────────────────────────────────────┤
+│ acc_002     │ ACCOUNT            │ READY        │ Bal=61.0000 ATF | Pend=0.0000 | Lvl=1                  │
+├─────────────┼────────────────────┼──────────────┼────────────────────────────────────────────────────────┤
+│             │ MINING             │ WAIT         │ Proses selesai, menunggu cycle berikutnya              │
+├─────────────┼────────────────────┼──────────────┼────────────────────────────────────────────────────────┤
+│             │ NEXT CYCLE         │ WAIT         │ Cycle berikutnya dalam 59:43                           │
+╰─────────────┴────────────────────┴──────────────┴────────────────────────────────────────────────────────╯
 
-┌────────────┬──────────────────┬──────────┬─────────────────────────────┐
-│ ACCOUNT    │ ACTIVITY         │ STATUS   │ DETAIL                      │
-├────────────┼──────────────────┼──────────┼─────────────────────────────┤
-│ acc_001    │ TELEGRAM SESSION │ OK       │ Session aktif               │
-│ acc_001    │ LOGIN            │ SUCCESS  │ Query lama valid            │
-│ acc_001    │ MINING           │ SUCCESS  │ +0.1234 ATF                 │
-│ acc_001    │ BOOST            │ SUCCESS  │ 2x | Target=YES             │
-│ acc_001    │ ONE-TIME TASK    │ SUCCESS  │ youtube_subscribe           │
-│ acc_001    │ REPEAT TASK      │ SUCCESS  │ Visit website               │
-│ acc_001    │ REPEAT TASK      │ SUCCESS  │ YouTube like/comment        │
-│ acc_001    │ REPEAT TASK      │ SUCCESS  │ Twitter retweet             │
-│ acc_001    │ REPEAT TASK      │ SUCCESS  │ React to latest post        │
-│ acc_001    │ BALANCE          │ SUCCESS  │ 10.0000 -> 10.2500 ATF      │
-│ acc_001    │ NEXT CYCLE       │ WAIT     │ Cycle berikutnya 59:42      │
-└────────────┴──────────────────┴──────────┴─────────────────────────────┘
 ```
 
 Setiap **REPEAT TASK memiliki baris sendiri**, sehingga tidak saling menimpa.
