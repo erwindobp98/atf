@@ -27,7 +27,7 @@
 
 Struktur folder final :
 
-```text
+```
 atf/
 ├── atf.py
 ├── config.json
