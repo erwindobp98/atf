@@ -66,6 +66,44 @@ Jika inging mengganti bagian Telegram:
 
 dengan **API ID** dan **API HASH Telegram** milikmu.
 
+# Cara Mendapatkan Telegram `API_ID` dan `API_HASH`
+
+Panduan langkah demi langkah untuk mendapatkan kredensial Telegram API (`api_id` dan `api_hash`) yang diperlukan untuk pengembangan bot, userbot, atau aplikasi pihak ketiga.
+
+---
+
+## 📋 Langkah-langkah Pengambilan Kredensial
+
+1. **Buka Portal Pengembang Telegram**  
+   Buka peramban (browser) Anda dan kunjungi halaman resmi: [https://my.telegram.org](https://my.telegram.org)
+
+2. **Masuk ke Akun Telegram**  
+   * Masukkan **Nomor Telepon** Anda yang terhubung dengan akun Telegram (gunakan format internasional, contoh: `+6281234xxxxxx`).
+   * Klik tombol **Next**.
+
+3. **Verifikasi Kode Keamanan**  
+   * Buka aplikasi Telegram di HP atau Desktop Anda.
+   * Salin kode verifikasi/konfirmasi yang dikirimkan langsung oleh sistem Telegram.
+   * Tempelkan kode tersebut pada kolom **Confirmation code** di situs web, lalu klik **Sign In**.
+
+4. **Akses Menu Aplikasi**  
+   * Setelah berhasil masuk, pilih menu **API development tools**.
+
+5. **Buat Aplikasi Baru**  
+   Isi formulir pembuatan aplikasi dengan ketentuan sebagai berikut:
+   * **App title:** Nama aplikasi Anda (bebas, contoh: `Aplikasi Saya`).
+   * **Short name:** Nama pendek tanpa spasi (contoh: `aplikasisaya`).
+   * **URL:** (Opsional) Boleh dikosongkan atau diisi dengan link bebas (contoh: `https://mywebsite.com`).
+   * **Platform:** Pilih platform yang sesuai (contoh: `Android`, `iOS`, atau `Desktop`).
+   * **Description:** Deskripsi singkat aplikasi Anda (bebas).
+
+6. **Simpan Kredensial**  
+   * Klik tombol **Create application**.
+   * Setelah berhasil, Anda akan melihat halaman rincian yang menampilkan **App api_id** dan **App api_hash**.
+   * Salin dan simpan nilai `api_id` (berupa angka) serta `api_hash` (berupa deretan karakter acak) ke tempat yang aman.
+
+---
+
 Kemudian jalankan kembali:
 
 ```bash
@@ -159,23 +197,23 @@ Dashboard akan berjalan **bergulir di tempat**, bukan mencetak dashboard baru te
 
 Contohnya:
 
-```                                                         📊 ATF MINING BOT DASHBOARD
-╭─────────────┬────────────────────┬──────────────┬────────────────────────────────────────────────────────╮
-│ ACCOUNT     │ ACTIVITY           │ STATUS       │ DETAIL                                                 │
-├─────────────┼────────────────────┼──────────────┼────────────────────────────────────────────────────────┤
-│ acc_001     │ ACCOUNT            │ READY        │ Bal=276.5240 ATF | Pend=0.0000 | Lvl=42                │
-├─────────────┼────────────────────┼──────────────┼────────────────────────────────────────────────────────┤
-│             │ MINING             │ WAIT         │ Proses selesai, menunggu cycle berikutnya              │
-├─────────────┼────────────────────┼──────────────┼────────────────────────────────────────────────────────┤
-│             │ NEXT CYCLE         │ WAIT         │ Cycle berikutnya dalam 59:42                           │
-├─────────────┼────────────────────┼──────────────┼────────────────────────────────────────────────────────┤
-│ acc_002     │ ACCOUNT            │ READY        │ Bal=61.0000 ATF | Pend=0.0000 | Lvl=1                  │
-├─────────────┼────────────────────┼──────────────┼────────────────────────────────────────────────────────┤
-│             │ MINING             │ WAIT         │ Proses selesai, menunggu cycle berikutnya              │
-├─────────────┼────────────────────┼──────────────┼────────────────────────────────────────────────────────┤
-│             │ NEXT CYCLE         │ WAIT         │ Cycle berikutnya dalam 59:43                           │
-╰─────────────┴────────────────────┴──────────────┴────────────────────────────────────────────────────────╯
-
+```                                                         
+                                                          📊 ATF MINING BOT DASHBOARD
+╭─────────────┬────────────────────┬──────────────┬──────────────────────────────────────╮
+│ ACCOUNT     │ ACTIVITY           │ STATUS       │ DETAIL                               │
+├─────────────┼────────────────────┼──────────────┼──────────────────────────────────────┤
+│ acc_001     │ ACCOUNT            │ READY        │ Bal=296.1587 ATF | Lvl=44            │
+├─────────────┼────────────────────┼──────────────┼──────────────────────────────────────┤
+│             │ MINING             │ SKIP         │ Mining aktif | Pend=0.0621 ATF       │
+├─────────────┼────────────────────┼──────────────┼──────────────────────────────────────┤
+│             │ NEXT CYCLE         │ WAIT         │ Cycle berikutnya dalam 58:41         │
+├─────────────┼────────────────────┼──────────────┼──────────────────────────────────────┤
+│ acc_002     │ ACCOUNT            │ READY        │ Bal=76.1265 ATF | Lvl=1              │
+├─────────────┼────────────────────┼──────────────┼──────────────────────────────────────┤
+│             │ MINING             │ SKIP         │ Mining aktif | Pend=0.0259 ATF       │
+├─────────────┼────────────────────┼──────────────┼──────────────────────────────────────┤
+│             │ NEXT CYCLE         │ WAIT         │ Cycle berikutnya dalam 59:15         │
+╰─────────────┴────────────────────┴──────────────┴──────────────────────────────────────╯
 ```
 
 Setiap **REPEAT TASK memiliki baris sendiri**, sehingga tidak saling menimpa.
