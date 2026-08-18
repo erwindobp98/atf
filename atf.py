@@ -381,7 +381,7 @@ class Dashboard:
                     "order": 1
                 },
                 "activity": {
-                    "activity": "IDLE",
+                    "activity": "MINING",
                     "status": "WAIT",
                     "detail": "Belum ada aktivitas",
                     "order": 2
@@ -497,7 +497,7 @@ class Dashboard:
 
             slots = [
                 account_rows.get("account", {"activity": "ACCOUNT", "status": "WAIT", "detail": "-"}),
-                account_rows.get("activity", {"activity": "IDLE", "status": "WAIT", "detail": "-"}),
+                account_rows.get("activity", {"activity": "MINING", "status": "WAIT", "detail": "-"}),
                 account_rows.get("next_cycle", {"activity": "NEXT CYCLE", "status": "WAIT", "detail": "-"})
             ]
 
@@ -505,7 +505,6 @@ class Dashboard:
                 status = str(row.get("status", "-")).upper()
                 status_style = status_styles.get(status, "white")
                 
-                # Pembersihan string detail agar tidak memotong / memutus tabel
                 detail = str(row.get("detail", "-")).replace("\n", " ").replace("\r", " ").strip()
                 if len(detail) > 75:
                     detail = detail[:72] + "..."
@@ -1988,10 +1987,11 @@ class ATFClient:
         ):
 
             preview = float(
-                current_user.get(
-                    "pending_reward",
-                    0
-                )
+                current_user.get("pending_reward") 
+                or current_user.get("unclaimed_reward") 
+                or current_user.get("mined_unclaimed") 
+                or current_user.get("unclaimed") 
+                or current_user.get("pending_balance") 
                 or 0
             )
 
@@ -2199,10 +2199,11 @@ async def run_account_cycle(
         )
 
         pending = float(
-            user.get(
-                "pending_reward",
-                0
-            )
+            user.get("pending_reward") 
+            or user.get("unclaimed_reward") 
+            or user.get("mined_unclaimed") 
+            or user.get("unclaimed") 
+            or user.get("pending_balance") 
             or 0
         )
 
@@ -2222,7 +2223,7 @@ async def run_account_cycle(
             account_id,
             "ACCOUNT",
             "READY",
-            f"Bal={balance_before:.4f} ATF | Pend={pending:.4f} | Lvl={level}",
+            f"Bal={balance_before:.4f} ATF | Lvl={level}",
             row_key="account"
         )
 
@@ -2263,7 +2264,7 @@ async def run_account_cycle(
         should_claim = (
             cycle_frozen
             or cycle_near_freeze
-            or pending >= 5
+            or pending > 5
         )
 
         if mining_never_started:
@@ -2369,8 +2370,8 @@ async def run_account_cycle(
             await activity(
                 account_id,
                 "MINING",
-                "WAIT",
-                f"Pending={pending:.4f} ATF",
+                "SKIP",
+                f"Mining aktif | Pending={pending:.4f} ATF",
                 row_key="activity"
             )
 
@@ -2825,7 +2826,7 @@ async def run_account_cycle(
             account_id,
             "ACCOUNT",
             "READY",
-            f"Bal={balance_after:.4f} ATF | Pend=0.0000 | Lvl={level_after}",
+            f"Bal={balance_after:.4f} ATF | Lvl={level_after}",
             row_key="account"
         )
 
@@ -2836,6 +2837,8 @@ async def run_account_cycle(
             f"{balance_before:.4f} -> {balance_after:.4f} ATF (+{gain:.4f})",
             row_key="activity"
         )
+
+        return final_user
 
     except Exception as e:
 
@@ -2856,6 +2859,7 @@ async def run_account_cycle(
             message,
             row_key="account"
         )
+        return None
 
     finally:
 
@@ -2876,13 +2880,25 @@ async def run_account_worker(account_id, state_mgr):
 
     while True:
 
-        await run_account_cycle(account_id, state_mgr)
+        user_data = await run_account_cycle(account_id, state_mgr)
+
+        # Mengambil pending reward terbaru jika user_data tersedia
+        pending = 0.0
+        if user_data:
+            pending = float(
+                user_data.get("pending_reward") 
+                or user_data.get("unclaimed_reward") 
+                or user_data.get("mined_unclaimed") 
+                or user_data.get("unclaimed") 
+                or user_data.get("pending_balance") 
+                or 0
+            )
 
         await activity(
             account_id,
             "MINING",
-            "WAIT",
-            "Proses selesai, menunggu cycle berikutnya",
+            "SKIP",
+            f"Mining aktif | Pend={pending:.4f} ATF",
             row_key="activity"
         )
 
