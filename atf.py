@@ -8,7 +8,7 @@ import uuid
 
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from urllib.parse import unquote, parse_qs
+from urllib.parse import parse_qs
 
 import httpx
 from rich.console import Console, Group
@@ -717,6 +717,37 @@ def remove_query(
 
 
 # ==============================================================
+# QUERY VALIDATION / TRANSPORT SAFETY
+# ==============================================================
+
+def is_query_transport_unsafe(query):
+    """Detect cached WebApp init-data that is unsafe for HTTP headers."""
+
+    if not isinstance(query, str):
+        return True
+
+    query = query.strip()
+
+    if not query:
+        return True
+
+    # HTTP headers must be ASCII-safe.
+    if any(ord(char) > 127 for char in query):
+        return True
+
+    # Old cached format had decoded JSON: user={"id":...}
+    # Correct Telegram init-data keeps this percent-encoded.
+    lowered = query.lower()
+    if "user={" in lowered:
+        return True
+
+    if "user=" not in lowered:
+        return True
+
+    return False
+
+
+# ==============================================================
 # STATE
 # ==============================================================
 
@@ -1061,72 +1092,31 @@ class ATFClient:
     async def fetch_webapp_query(self):
 
         if not self.tg:
+            raise RuntimeError("Telegram client belum connect")
 
-            raise RuntimeError(
-                "Telegram client belum connect"
-            )
+        bot = await self.tg.get_entity(BOT_USERNAME)
 
-        bot = await self.tg.get_entity(
-            BOT_USERNAME
-        )
-
-        def find_webview(
-            messages
-        ):
-
+        def find_webview(messages):
             for msg in messages:
-
                 if not msg.reply_markup:
-
                     continue
-
                 for row in msg.reply_markup.rows:
-
                     for button in row.buttons:
-
-                        if isinstance(
-                            button,
-                            KeyboardButtonWebView
-                        ):
-
+                        if isinstance(button, KeyboardButtonWebView):
                             return button
-
             return None
 
-        messages = await self.tg.get_messages(
-            bot,
-            limit=20
-        )
-
-        button = find_webview(
-            messages
-        )
+        messages = await self.tg.get_messages(bot, limit=20)
+        button = find_webview(messages)
 
         if button is None:
-
-            await self.tg.send_message(
-                bot,
-                "/start"
-            )
-
-            await asyncio.sleep(
-                2
-            )
-
-            messages = await self.tg.get_messages(
-                bot,
-                limit=20
-            )
-
-            button = find_webview(
-                messages
-            )
+            await self.tg.send_message(bot, "/start")
+            await asyncio.sleep(2)
+            messages = await self.tg.get_messages(bot, limit=20)
+            button = find_webview(messages)
 
         if button is None:
-
-            raise RuntimeError(
-                "Tombol WebView tidak ditemukan"
-            )
+            raise RuntimeError("Tombol WebView tidak ditemukan")
 
         result = await self.tg(
             RequestWebViewRequest(
@@ -1139,55 +1129,39 @@ class ATFClient:
         )
 
         url = result.url
-
         self._referer = url[:500]
 
         if "#" not in url:
+            raise RuntimeError("WebView URL tidak memiliki fragment")
 
-            raise RuntimeError(
-                "WebView URL tidak memiliki fragment"
-            )
-
-        fragment = url.split(
-            "#",
-            1
-        )[1]
-
-        params = parse_qs(
-            fragment
-        )
+        fragment = url.split("#", 1)[1]
+        params = parse_qs(fragment)
 
         if "tgWebAppData" not in params:
+            raise RuntimeError("tgWebAppData tidak ditemukan")
 
-            raise RuntimeError(
-                "tgWebAppData tidak ditemukan"
-            )
-
-        raw = unquote(
-            params[
-                "tgWebAppData"
-            ][0]
-        )
-
-        qs = parse_qs(
-            raw
-        )
+        # Keep the Telegram init-data in its original encoded form.
+        # parse_qs() below is only for reading the user object.
+        raw = params["tgWebAppData"][0]
+        qs = parse_qs(raw)
 
         if "user" not in qs:
+            raise RuntimeError("Data user Telegram tidak ditemukan")
 
-            raise RuntimeError(
-                "Data user Telegram tidak ditemukan"
-            )
+        try:
+            user_obj = json.loads(qs["user"][0])
+        except Exception as e:
+            raise RuntimeError(f"JSON user Telegram tidak valid: {e}")
+
+        if not isinstance(user_obj, dict) or not user_obj.get("id"):
+            raise RuntimeError("Data user Telegram tidak valid")
+
+        if is_query_transport_unsafe(raw):
+            raise RuntimeError("Query WebView berada dalam format decoded/non-ASCII")
 
         self.init_data_raw = raw
-
-        self.user_obj = json.loads(
-            qs["user"][0]
-        )
-
-        self.tg_id = int(
-            self.user_obj["id"]
-        )
+        self.user_obj = user_obj
+        self.tg_id = int(self.user_obj["id"])
 
         return raw
 
@@ -1446,7 +1420,17 @@ class ATFClient:
 
             "tgwebapp",
 
-            "initdata"
+            "initdata",
+
+            "ascii",
+
+            "codec",
+
+            "encode",
+
+            "unicode",
+
+            "init data"
         ]
 
         return any(
@@ -1466,47 +1450,33 @@ class ATFClient:
         self.init_data_raw = query
 
         try:
-
-            qs = parse_qs(
-                query
-            )
-
+            qs = parse_qs(query)
             if "user" in qs:
-
-                self.user_obj = json.loads(
-                    qs["user"][0]
-                )
-
-                self.tg_id = int(
-                    self.user_obj["id"]
-                )
-
-        except Exception:
-
-            pass
+                self.user_obj = json.loads(qs["user"][0])
+                self.tg_id = int(self.user_obj["id"])
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Query Telegram tidak bisa dibaca: {e}"
+            }
 
         if not self.tg_id:
-
             return {
+                "status": "error",
+                "message": "Telegram user tidak bisa dibaca"
+            }
 
-                "status":
-                    "error",
-
-                "message":
-                    "Telegram user tidak bisa dibaca"
+        if is_query_transport_unsafe(query):
+            return {
+                "status": "error",
+                "message": "Cached WebApp query memiliki format tidak aman"
             }
 
         return await self.post(
             "login",
             {
-                "tg_id":
-                    self.tg_id,
-
-                "username":
-                    self.user_obj.get(
-                        "username",
-                        ""
-                    )
+                "tg_id": self.tg_id,
+                "username": self.user_obj.get("username", "")
             }
         )
 
@@ -1514,22 +1484,16 @@ class ATFClient:
     # LOGIN
     # ==========================================================
 
-    async def login(
-        self
-    ):
+    async def login(self):
 
         queries = load_queries()
-
-        cached_query = queries.get(
-            self.account_id
-        )
+        cached_query = queries.get(self.account_id)
 
         # ======================================================
         # CACHE HIT
         # ======================================================
 
         if cached_query:
-
             await activity(
                 self.account_id,
                 "WEBAPP QUERY",
@@ -1538,88 +1502,49 @@ class ATFClient:
                 row_key="query"
             )
 
-            data = await self.login_with_query(
-                cached_query
-            )
-
-            # --------------------------------------------------
-            # Query masih valid
-            # --------------------------------------------------
-
-            if data.get(
-                "status"
-            ) == "success":
-
-                if data.get(
-                    "tma_session_token"
-                ):
-
-                    self.tma_token = data[
-                        "tma_session_token"
-                    ]
-
-                user = data.get(
-                    "user"
-                ) or {}
-
-                balance = float(
-                    user.get(
-                        "mined_balance",
-                        0
-                    )
-                    or 0
-                )
-
+            if is_query_transport_unsafe(cached_query):
                 await activity(
                     self.account_id,
-                    "LOGIN",
-                    "SUCCESS",
-                    f"Query lama valid | "
-                    f"Balance={balance:.4f} ATF",
-                    row_key="login"
+                    "WEBAPP QUERY",
+                    "INVALID",
+                    "Format query cache lama/decoded — refresh diperlukan",
+                    row_key="query"
                 )
+                remove_query(self.account_id)
+                cached_query = None
+            else:
+                try:
+                    data = await self.login_with_query(cached_query)
+                except Exception as e:
+                    data = {"status": "error", "message": str(e)}
 
-                return data
+                if data.get("status") == "success":
+                    if data.get("tma_session_token"):
+                        self.tma_token = data["tma_session_token"]
 
-            # --------------------------------------------------
-            # Query error biasa
-            # Jangan langsung refresh.
-            # --------------------------------------------------
+                    user = data.get("user") or {}
+                    balance = float(user.get("mined_balance", 0) or 0)
 
-            if not self.is_auth_invalid(
-                data
-            ):
-
-                message = str(
-                    data.get(
-                        "message",
-                        "unknown"
+                    await activity(
+                        self.account_id,
+                        "LOGIN",
+                        "SUCCESS",
+                        f"Query lama valid | Balance={balance:.4f} ATF",
+                        row_key="login"
                     )
+                    return data
+
+                message = str(data.get("message", "unknown"))
+                await activity(
+                    self.account_id,
+                    "WEBAPP QUERY",
+                    "INVALID",
+                    f"Query cache gagal: {message[:120]} | refresh diperlukan",
+                    row_key="query"
                 )
-
-                raise RuntimeError(
-                    "API login gagal dengan query "
-                    f"tersimpan: {message}"
-                )
-
-            # --------------------------------------------------
-            # Query memang invalid
-            # --------------------------------------------------
-
-            await activity(
-                self.account_id,
-                "WEBAPP QUERY",
-                "INVALID",
-                "Query lama tidak valid — refresh diperlukan",
-                row_key="query"
-            )
-
-            remove_query(
-                self.account_id
-            )
+                remove_query(self.account_id)
 
         else:
-
             await activity(
                 self.account_id,
                 "WEBAPP QUERY",
@@ -1629,146 +1554,109 @@ class ATFClient:
             )
 
         # ======================================================
-        # FETCH NEW QUERY
+        # FETCH NEW QUERY + LOGIN
         # ======================================================
 
-        await activity(
-            self.account_id,
-            "WEBAPP QUERY",
-            "FETCH",
-            "Mengambil WebView Telegram...",
-            row_key="query"
-        )
+        max_refresh_attempts = 2
+        last_data = None
+        last_error = None
 
-        query = await self.fetch_webapp_query()
+        for refresh_index in range(max_refresh_attempts):
 
-        if not query:
-
-            raise RuntimeError(
-                "Query WebView kosong"
-            )
-
-        if "user=" not in query:
-
-            raise RuntimeError(
-                "Query WebView tidak valid"
-            )
-
-        save_query(
-            self.account_id,
-            query
-        )
-
-        await activity(
-            self.account_id,
-            "WEBAPP QUERY",
-            "SAVED",
-            "Query baru disimpan ke queries.txt",
-            row_key="query"
-        )
-
-        # ======================================================
-        # LOGIN NEW QUERY
-        # ======================================================
-
-        data = await self.login_with_query(
-            query
-        )
-
-        if data.get(
-            "status"
-        ) == "success":
-
-            if data.get(
-                "tma_session_token"
-            ):
-
-                self.tma_token = data[
-                    "tma_session_token"
-                ]
-
-            user = data.get(
-                "user"
-            ) or {}
-
-            balance = float(
-                user.get(
-                    "mined_balance",
-                    0
+            if refresh_index == 0:
+                status = "FETCH"
+                detail = "Mengambil WebView Telegram..."
+            else:
+                status = "RETRY"
+                detail = (
+                    "Query baru ditolak/error — mengambil WebView ulang "
+                    f"({refresh_index + 1}/{max_refresh_attempts})"
                 )
-                or 0
-            )
-
-            await activity(
-                self.account_id,
-                "LOGIN",
-                "SUCCESS",
-                f"Query baru valid | "
-                f"Balance={balance:.4f} ATF",
-                row_key="login"
-            )
-
-            return data
-
-        # ======================================================
-        # RECOVERY
-        # ======================================================
-
-        if self.is_auth_invalid(
-            data
-        ):
 
             await activity(
                 self.account_id,
                 "WEBAPP QUERY",
-                "RETRY",
-                "Query baru ditolak — mengambil ulang",
+                status,
+                detail,
                 row_key="query"
             )
 
-            remove_query(
-                self.account_id
-            )
+            try:
+                query = await self.fetch_webapp_query()
 
-            query = await self.fetch_webapp_query()
+                if not query:
+                    raise RuntimeError("Query WebView kosong")
 
-            save_query(
-                self.account_id,
-                query
-            )
+                if is_query_transport_unsafe(query):
+                    raise RuntimeError(
+                        "Query WebView baru tidak dalam format encoded yang aman"
+                    )
 
-            data = await self.login_with_query(
-                query
-            )
-
-            if data.get(
-                "status"
-            ) == "success":
-
-                if data.get(
-                    "tma_session_token"
-                ):
-
-                    self.tma_token = data[
-                        "tma_session_token"
-                    ]
+                save_query(self.account_id, query)
 
                 await activity(
                     self.account_id,
-                    "LOGIN",
-                    "SUCCESS",
-                    "Login recovery berhasil",
-                    row_key="login"
+                    "WEBAPP QUERY",
+                    "SAVED",
+                    "Query baru disimpan ke queries.txt",
+                    row_key="query"
                 )
 
-                return data
+                try:
+                    data = await self.login_with_query(query)
+                except Exception as e:
+                    data = {"status": "error", "message": str(e)}
 
-        message = str(
-            data.get(
-                "message",
-                "unknown"
-            )
-        )
+                last_data = data
+
+                if data.get("status") == "success":
+                    if data.get("tma_session_token"):
+                        self.tma_token = data["tma_session_token"]
+
+                    user = data.get("user") or {}
+                    balance = float(user.get("mined_balance", 0) or 0)
+
+                    await activity(
+                        self.account_id,
+                        "LOGIN",
+                        "SUCCESS",
+                        f"Query baru valid | Balance={balance:.4f} ATF",
+                        row_key="login"
+                    )
+                    return data
+
+                message = str(data.get("message", "unknown"))
+                last_error = message
+                remove_query(self.account_id)
+
+                if refresh_index < max_refresh_attempts - 1:
+                    await activity(
+                        self.account_id,
+                        "WEBAPP QUERY",
+                        "RETRY",
+                        f"Login query baru gagal: {message[:100]}",
+                        row_key="query"
+                    )
+                    await asyncio.sleep(2)
+
+            except Exception as e:
+                last_error = str(e)
+                remove_query(self.account_id)
+
+                if refresh_index < max_refresh_attempts - 1:
+                    await activity(
+                        self.account_id,
+                        "WEBAPP QUERY",
+                        "RETRY",
+                        f"Fetch query gagal: {last_error[:100]}",
+                        row_key="query"
+                    )
+                    await asyncio.sleep(2)
+
+        if last_data and last_data.get("status") != "success":
+            message = str(last_data.get("message", last_error or "unknown"))
+        else:
+            message = last_error or "unknown"
 
         raise RuntimeError(
             "Login API gagal setelah refresh query: "
@@ -2756,7 +2644,7 @@ async def run_account_cycle(
                     account_id,
                     "ONE-TIME TASK",
                     "SUCCESS",
-                    f"{task_label} -> {task_id} | +{reward} ATF",
+                    f"{task_id} | +{reward} ATF",
                     row_key=task_row
                 )
 
