@@ -128,10 +128,6 @@ def load_config() -> dict:
 
         sys.exit(1)
 
-    # ----------------------------------------------------------
-    # Pastikan struktur config lama dilengkapi
-    # ----------------------------------------------------------
-
     def merge_defaults(
         target,
         defaults
@@ -161,7 +157,6 @@ def load_config() -> dict:
         DEFAULT_CONFIG
     )
 
-    # Simpan kembali supaya config lama ikut dilengkapi.
     CONFIG_PATH.write_text(
         json.dumps(
             cfg,
@@ -362,7 +357,7 @@ def get_user_agent(
 
 
 # ==============================================================
-# DASHBOARD
+# DASHBOARD (CLEAN & MINIMALIST 3-SLOT TABLE)
 # ==============================================================
 
 class Dashboard:
@@ -378,14 +373,33 @@ class Dashboard:
 
     def register(self, account_id):
         if account_id not in self.rows:
-            self.rows[account_id] = {}
+            self.rows[account_id] = {
+                "account": {
+                    "activity": "ACCOUNT",
+                    "status": "WAIT",
+                    "detail": "Menunggu inisialisasi...",
+                    "order": 1
+                },
+                "activity": {
+                    "activity": "IDLE",
+                    "status": "WAIT",
+                    "detail": "Belum ada aktivitas",
+                    "order": 2
+                },
+                "next_cycle": {
+                    "activity": "NEXT CYCLE",
+                    "status": "WAIT",
+                    "detail": "Menunggu cycle...",
+                    "order": 3
+                }
+            }
 
     def start(self):
         if self._started:
             return
 
         self._live = Live(
-            self.build_renderable(),
+            self.build_table(),
             console=self._console,
             refresh_per_second=4,
             screen=True,
@@ -402,34 +416,6 @@ class Dashboard:
                 self._live = None
                 self._started = False
 
-    def get_order(self, activity, row_key):
-        activity_upper = str(activity).upper()
-
-        if activity_upper in (
-            "TELEGRAM LOGIN",
-            "TELEGRAM SESSION"
-        ):
-            return 10
-        if activity_upper == "LOGIN":
-            return 20
-        if activity_upper == "ACCOUNT":
-            return 30
-        if activity_upper == "MINING":
-            return 40
-        if activity_upper == "BOOST":
-            return 50
-        if activity_upper == "JOIN CHANNEL":
-            return 80
-        if activity_upper == "ONE-TIME TASK":
-            return 100
-        if activity_upper == "REPEAT TASK":
-            return 200
-        if activity_upper == "BALANCE":
-            return 300
-        if activity_upper == "NEXT CYCLE":
-            return 400
-        return 500
-
     async def update(
         self,
         account_id,
@@ -441,36 +427,43 @@ class Dashboard:
         async with self.lock:
             self.register(account_id)
 
-            if row_key is None:
-                row_key = (
-                    activity
-                    .lower()
-                    .replace(" ", "_")
-                )
+            activity_upper = str(activity).upper()
 
-            self.rows[account_id][row_key] = {
+            if row_key is None:
+                if activity_upper == "ACCOUNT":
+                    target_key = "account"
+                elif activity_upper == "NEXT CYCLE":
+                    target_key = "next_cycle"
+                else:
+                    target_key = "activity"
+            else:
+                target_key = row_key
+
+            order = 1 if target_key == "account" else (3 if target_key == "next_cycle" else 2)
+
+            self.rows[account_id][target_key] = {
                 "activity": activity,
                 "status": status,
                 "detail": detail,
-                "order": self.get_order(activity, row_key)
+                "order": order
             }
 
             self.render()
 
     def build_table(self):
         table = Table(
-            title="📊 ACCOUNT ACTIVITY",
+            title="📊 ATF MINING BOT DASHBOARD",
             box=box.ROUNDED,
             border_style="bright_blue",
             header_style="bold white on blue",
             expand=True,
-            show_lines=False,
+            show_lines=True,
         )
 
         table.add_column("ACCOUNT", style="bold cyan", min_width=11, no_wrap=True)
         table.add_column("ACTIVITY", style="bold white", min_width=18, no_wrap=True)
         table.add_column("STATUS", min_width=12, no_wrap=True)
-        table.add_column("DETAIL", ratio=1)
+        table.add_column("DETAIL", ratio=1, no_wrap=True)
 
         status_styles = {
             "SUCCESS": "bold green",
@@ -502,33 +495,25 @@ class Dashboard:
         for account in self.accounts:
             account_rows = self.rows.get(account, {})
 
-            sorted_rows = sorted(
-                account_rows.items(),
-                key=lambda item: (
-                    item[1].get("order", 500),
-                    item[0]
-                )
-            )
+            slots = [
+                account_rows.get("account", {"activity": "ACCOUNT", "status": "WAIT", "detail": "-"}),
+                account_rows.get("activity", {"activity": "IDLE", "status": "WAIT", "detail": "-"}),
+                account_rows.get("next_cycle", {"activity": "NEXT CYCLE", "status": "WAIT", "detail": "-"})
+            ]
 
-            if not sorted_rows:
-                sorted_rows = [(
-                    "waiting",
-                    {
-                        "activity": "WAITING",
-                        "status": "WAIT",
-                        "detail": "Menunggu proses...",
-                        "order": 0,
-                    },
-                )]
-
-            for row_key, row in sorted_rows:
+            for slot_idx, row in enumerate(slots):
                 status = str(row.get("status", "-")).upper()
                 status_style = status_styles.get(status, "white")
-                detail = str(row.get("detail", "-"))
-                detail = detail.replace("\n", " ").replace("\r", " ")
+                
+                # Pembersihan string detail agar tidak memotong / memutus tabel
+                detail = str(row.get("detail", "-")).replace("\n", " ").replace("\r", " ").strip()
+                if len(detail) > 75:
+                    detail = detail[:72] + "..."
+
+                acc_display = str(account) if slot_idx == 0 else ""
 
                 table.add_row(
-                    str(account),
+                    acc_display,
                     str(row.get("activity", "-")),
                     f"[{status_style}]{status}[/{status_style}]",
                     detail,
@@ -536,38 +521,12 @@ class Dashboard:
 
         return table
 
-    def build_renderable(self):
-        title = (
-            "[bold cyan]🚀 ATF MINING BOT[/bold cyan]\n"
-            "[dim]Telegram WebApp • Repeatable Tasks • Live Dashboard[/dim]"
-        )
-
-        meta = (
-            f"[bold]👤 Accounts:[/bold] {len(self.accounts)}    "
-            f"[bold]💾 Query:[/bold] {QUERY_PATH.name}    "
-            f"[bold]🌐 API:[/bold] {BASE_URL}"
-        )
-
-        timestamp = (
-            f"[dim]⏰ {time.strftime('%Y-%m-%d %H:%M:%S')}[/dim]"
-        )
-
-        return Group(
-            title,
-            meta,
-            "",
-            self.build_table(),
-            timestamp,
-        )
-
     def render(self):
-        # Rich Live replaces the previous dashboard frame.
-        # No console.clear() and no console.print() here.
         if not self._started or self._live is None:
             return
 
         self._live.update(
-            self.build_renderable(),
+            self.build_table(),
             refresh=True
         )
 
@@ -721,7 +680,6 @@ def remove_query(
 # ==============================================================
 
 def is_query_transport_unsafe(query):
-    """Detect cached WebApp init-data that is unsafe for HTTP headers."""
 
     if not isinstance(query, str):
         return True
@@ -731,12 +689,9 @@ def is_query_transport_unsafe(query):
     if not query:
         return True
 
-    # HTTP headers must be ASCII-safe.
     if any(ord(char) > 127 for char in query):
         return True
 
-    # Old cached format had decoded JSON: user={"id":...}
-    # Correct Telegram init-data keeps this percent-encoded.
     lowered = query.lower()
     if "user={" in lowered:
         return True
@@ -958,7 +913,7 @@ class ATFClient:
                 "TELEGRAM LOGIN",
                 "INPUT",
                 "Session belum ada — login Telegram diperlukan",
-                row_key="telegram"
+                row_key="activity"
             )
 
             await self.tg.disconnect()
@@ -976,7 +931,7 @@ class ATFClient:
             f"Session aktif | "
             f"@{me.username or '-'} | "
             f"ID={me.id}",
-            row_key="telegram"
+            row_key="activity"
         )
 
         return True
@@ -1058,7 +1013,7 @@ class ATFClient:
             "TELEGRAM LOGIN",
             "SUCCESS",
             f"@{me.username or '-'} | ID={me.id}",
-            row_key="telegram"
+            row_key="activity"
         )
 
     # ==========================================================
@@ -1140,8 +1095,6 @@ class ATFClient:
         if "tgWebAppData" not in params:
             raise RuntimeError("tgWebAppData tidak ditemukan")
 
-        # Keep the Telegram init-data in its original encoded form.
-        # parse_qs() below is only for reading the user object.
         raw = params["tgWebAppData"][0]
         qs = parse_qs(raw)
 
@@ -1264,7 +1217,8 @@ class ATFClient:
                 self.account_id,
                 f"API {action.upper()}",
                 "REQUEST",
-                "Mengirim request..."
+                "Mengirim request...",
+                row_key="activity"
             )
 
         last_error = None
@@ -1311,7 +1265,8 @@ class ATFClient:
                         self.account_id,
                         f"API {action.upper()}",
                         "RESPONSE",
-                        f"HTTP {response.status_code}"
+                        f"HTTP {response.status_code}",
+                        row_key="activity"
                     )
 
                 return data
@@ -1331,7 +1286,8 @@ class ATFClient:
                         f"API {action.upper()}",
                         "RETRY",
                         f"Attempt {attempt + 1}/"
-                        f"{RETRY_COUNT}"
+                        f"{RETRY_COUNT}",
+                        row_key="activity"
                     )
 
                 if attempt < RETRY_COUNT - 1:
@@ -1499,7 +1455,7 @@ class ATFClient:
                 "WEBAPP QUERY",
                 "CACHE",
                 "Menggunakan query tersimpan",
-                row_key="query"
+                row_key="activity"
             )
 
             if is_query_transport_unsafe(cached_query):
@@ -1507,8 +1463,8 @@ class ATFClient:
                     self.account_id,
                     "WEBAPP QUERY",
                     "INVALID",
-                    "Format query cache lama/decoded — refresh diperlukan",
-                    row_key="query"
+                    "Format query cache lama - refresh diperlukan",
+                    row_key="activity"
                 )
                 remove_query(self.account_id)
                 cached_query = None
@@ -1529,8 +1485,8 @@ class ATFClient:
                         self.account_id,
                         "LOGIN",
                         "SUCCESS",
-                        f"Query lama valid | Balance={balance:.4f} ATF",
-                        row_key="login"
+                        f"Query valid | Balance={balance:.4f} ATF",
+                        row_key="activity"
                     )
                     return data
 
@@ -1539,8 +1495,8 @@ class ATFClient:
                     self.account_id,
                     "WEBAPP QUERY",
                     "INVALID",
-                    f"Query cache gagal: {message[:120]} | refresh diperlukan",
-                    row_key="query"
+                    f"Query cache gagal: {message[:50]}",
+                    row_key="activity"
                 )
                 remove_query(self.account_id)
 
@@ -1549,8 +1505,8 @@ class ATFClient:
                 self.account_id,
                 "WEBAPP QUERY",
                 "MISS",
-                "Query belum tersedia — mengambil WebView",
-                row_key="query"
+                "Mengambil WebView baru...",
+                row_key="activity"
             )
 
         # ======================================================
@@ -1568,17 +1524,14 @@ class ATFClient:
                 detail = "Mengambil WebView Telegram..."
             else:
                 status = "RETRY"
-                detail = (
-                    "Query baru ditolak/error — mengambil WebView ulang "
-                    f"({refresh_index + 1}/{max_refresh_attempts})"
-                )
+                detail = f"Mengambil WebView ulang ({refresh_index + 1}/{max_refresh_attempts})"
 
             await activity(
                 self.account_id,
                 "WEBAPP QUERY",
                 status,
                 detail,
-                row_key="query"
+                row_key="activity"
             )
 
             try:
@@ -1589,7 +1542,7 @@ class ATFClient:
 
                 if is_query_transport_unsafe(query):
                     raise RuntimeError(
-                        "Query WebView baru tidak dalam format encoded yang aman"
+                        "Query WebView tidak aman"
                     )
 
                 save_query(self.account_id, query)
@@ -1598,8 +1551,8 @@ class ATFClient:
                     self.account_id,
                     "WEBAPP QUERY",
                     "SAVED",
-                    "Query baru disimpan ke queries.txt",
-                    row_key="query"
+                    "Query baru disimpan",
+                    row_key="activity"
                 )
 
                 try:
@@ -1621,7 +1574,7 @@ class ATFClient:
                         "LOGIN",
                         "SUCCESS",
                         f"Query baru valid | Balance={balance:.4f} ATF",
-                        row_key="login"
+                        row_key="activity"
                     )
                     return data
 
@@ -1634,8 +1587,8 @@ class ATFClient:
                         self.account_id,
                         "WEBAPP QUERY",
                         "RETRY",
-                        f"Login query baru gagal: {message[:100]}",
-                        row_key="query"
+                        f"Login gagal: {message[:50]}",
+                        row_key="activity"
                     )
                     await asyncio.sleep(2)
 
@@ -1648,8 +1601,8 @@ class ATFClient:
                         self.account_id,
                         "WEBAPP QUERY",
                         "RETRY",
-                        f"Fetch query gagal: {last_error[:100]}",
-                        row_key="query"
+                        f"Fetch gagal: {last_error[:50]}",
+                        row_key="activity"
                     )
                     await asyncio.sleep(2)
 
@@ -1659,8 +1612,7 @@ class ATFClient:
             message = last_error or "unknown"
 
         raise RuntimeError(
-            "Login API gagal setelah refresh query: "
-            f"{message}"
+            f"Login API gagal: {message}"
         )
 
     # ==========================================================
@@ -2263,21 +2215,19 @@ async def run_account_cycle(
         )
 
         # ======================================================
-        # ACCOUNT READY
+        # ACCOUNT READY (BARIS PERTAMA)
         # ======================================================
 
         await activity(
             account_id,
             "ACCOUNT",
             "READY",
-            f"Balance={balance_before:.4f} ATF | "
-            f"Pending={pending:.4f} | "
-            f"Level={level}",
+            f"Bal={balance_before:.4f} ATF | Pend={pending:.4f} | Lvl={level}",
             row_key="account"
         )
 
         # ======================================================
-        # MINING
+        # MINING (SLOT AKTIVITAS)
         # ======================================================
 
         now = int(
@@ -2323,7 +2273,7 @@ async def run_account_cycle(
                 "MINING",
                 "START",
                 "Mining belum pernah dimulai",
-                row_key="mining"
+                row_key="activity"
             )
 
             result = await client.start_mining_only()
@@ -2337,7 +2287,7 @@ async def run_account_cycle(
                     "MINING",
                     "SUCCESS",
                     "Mining berhasil dimulai",
-                    row_key="mining"
+                    row_key="activity"
                 )
 
             else:
@@ -2346,9 +2296,8 @@ async def run_account_cycle(
                     account_id,
                     "MINING",
                     "FAILED",
-                    f"Start mining gagal: "
-                    f"{result.get('step', 'unknown')}",
-                    row_key="mining"
+                    f"Start mining gagal: {result.get('step', 'unknown')}",
+                    row_key="activity"
                 )
 
         elif should_claim:
@@ -2358,7 +2307,7 @@ async def run_account_cycle(
                 "MINING",
                 "CLAIM",
                 f"Pending={pending:.4f} ATF",
-                row_key="mining"
+                row_key="activity"
             )
 
             result = await client.claim_mining_with_restart(
@@ -2386,7 +2335,7 @@ async def run_account_cycle(
                     "MINING",
                     "SUCCESS",
                     f"+{amount:.4f} ATF",
-                    row_key="mining"
+                    row_key="activity"
                 )
 
                 # Refresh user
@@ -2412,7 +2361,7 @@ async def run_account_cycle(
                             "unknown"
                         )
                     ),
-                    row_key="mining"
+                    row_key="activity"
                 )
 
         else:
@@ -2422,11 +2371,11 @@ async def run_account_cycle(
                 "MINING",
                 "WAIT",
                 f"Pending={pending:.4f} ATF",
-                row_key="mining"
+                row_key="activity"
             )
 
         # ======================================================
-        # BOOST
+        # BOOST (SLOT AKTIVITAS)
         # ======================================================
 
         if user.get(
@@ -2438,7 +2387,7 @@ async def run_account_cycle(
                 "BOOST",
                 "RUNNING",
                 "Menghitung target boost...",
-                row_key="boost"
+                row_key="activity"
             )
 
             boost = await client.boost_until_target(
@@ -2468,10 +2417,8 @@ async def run_account_cycle(
                     account_id,
                     "BOOST",
                     "SUCCESS",
-                    f"{boost['boosts_done']}x | "
-                    f"Target="
-                    f"{'YES' if boost['target_reached'] else 'NO'}",
-                    row_key="boost"
+                    f"{boost['boosts_done']}x | Target={'YES' if boost['target_reached'] else 'NO'}",
+                    row_key="activity"
                 )
 
             else:
@@ -2481,7 +2428,7 @@ async def run_account_cycle(
                     "BOOST",
                     "SKIP",
                     "Tidak ada boost yang diperlukan",
-                    row_key="boost"
+                    row_key="activity"
                 )
 
         else:
@@ -2491,22 +2438,14 @@ async def run_account_cycle(
                 "BOOST",
                 "SKIP",
                 "Mining belum membutuhkan boost",
-                row_key="boost"
+                row_key="activity"
             )
 
         # ======================================================
-        # ONE-TIME TASK
+        # ONE-TIME TASK (SLOT AKTIVITAS)
         # ======================================================
 
         for task_id in ONE_TIME_TASKS:
-
-            task_row = (
-                f"one_time:{task_id}"
-            )
-
-            # --------------------------------------------------
-            # Already done
-            # --------------------------------------------------
 
             if task_id in state.one_time_done:
 
@@ -2515,14 +2454,10 @@ async def run_account_cycle(
                     "ONE-TIME TASK",
                     "SKIP",
                     f"{task_id} sudah selesai",
-                    row_key=task_row
+                    row_key="activity"
                 )
 
                 continue
-
-            # --------------------------------------------------
-            # Telegram join
-            # --------------------------------------------------
 
             if task_id in TELEGRAM_CHANNELS:
 
@@ -2535,7 +2470,7 @@ async def run_account_cycle(
                     "ONE-TIME TASK",
                     "JOIN",
                     f"{task_id} -> {channel}",
-                    row_key=task_row
+                    row_key="activity"
                 )
 
                 joined = await client.join_channel(
@@ -2549,7 +2484,7 @@ async def run_account_cycle(
                         "ONE-TIME TASK",
                         "FAILED",
                         f"{task_id} | gagal join {channel}",
-                        row_key=task_row
+                        row_key="activity"
                     )
 
                     continue
@@ -2559,23 +2494,19 @@ async def run_account_cycle(
                     "ONE-TIME TASK",
                     "JOINED",
                     f"{task_id} -> {channel}",
-                    row_key=task_row
+                    row_key="activity"
                 )
 
                 await asyncio.sleep(
                     2
                 )
 
-            # --------------------------------------------------
-            # START
-            # --------------------------------------------------
-
             await activity(
                 account_id,
                 "ONE-TIME TASK",
                 "START",
                 task_id,
-                row_key=task_row
+                row_key="activity"
             )
 
             start = await client.start_task(
@@ -2591,22 +2522,14 @@ async def run_account_cycle(
                     "ONE-TIME TASK",
                     "BUSY",
                     task_id,
-                    row_key=task_row
+                    row_key="activity"
                 )
 
                 continue
 
-            # --------------------------------------------------
-            # VERIFY WAIT
-            # --------------------------------------------------
-
             await asyncio.sleep(
                 TASK_VERIFY_WAIT
             )
-
-            # --------------------------------------------------
-            # CLAIM
-            # --------------------------------------------------
 
             claim = await client.claim_task(
                 task_id
@@ -2645,7 +2568,7 @@ async def run_account_cycle(
                     "ONE-TIME TASK",
                     "SUCCESS",
                     f"{task_id} | +{reward} ATF",
-                    row_key=task_row
+                    row_key="activity"
                 )
 
             elif (
@@ -2664,7 +2587,7 @@ async def run_account_cycle(
                     "ONE-TIME TASK",
                     "DONE",
                     f"{task_id} | {message[:45]}",
-                    row_key=task_row
+                    row_key="activity"
                 )
 
             else:
@@ -2674,7 +2597,7 @@ async def run_account_cycle(
                     "ONE-TIME TASK",
                     "FAILED",
                     f"{task_id} | {message[:45]}",
-                    row_key=task_row
+                    row_key="activity"
                 )
 
             state_mgr.save(
@@ -2686,7 +2609,7 @@ async def run_account_cycle(
             )
 
         # ======================================================
-        # REPEATABLE TASK
+        # REPEATABLE TASK (SLOT AKTIVITAS)
         # ======================================================
 
         wait_threshold = int(
@@ -2697,10 +2620,6 @@ async def run_account_cycle(
         )
 
         for task_id in REPEATABLE_TASKS:
-
-            task_row = (
-                f"repeat:{task_id}"
-            )
 
             now = int(
                 time.time()
@@ -2713,10 +2632,6 @@ async def run_account_cycle(
                 )
                 or 0
             )
-
-            # --------------------------------------------------
-            # COOLDOWN
-            # --------------------------------------------------
 
             if cooldown > now:
 
@@ -2734,9 +2649,8 @@ async def run_account_cycle(
                         account_id,
                         "REPEAT TASK",
                         "WAIT",
-                        f"{task_id} | "
-                        f"{minutes_left} menit",
-                        row_key=task_row
+                        f"{task_id} | {minutes_left}m",
+                        row_key="activity"
                     )
 
                     await asyncio.sleep(
@@ -2754,16 +2668,11 @@ async def run_account_cycle(
                         account_id,
                         "REPEAT TASK",
                         "SKIP",
-                        f"{task_id} | "
-                        f"cooldown {minutes_left} menit",
-                        row_key=task_row
+                        f"{task_id} | CD {minutes_left}m",
+                        row_key="activity"
                     )
 
                     continue
-
-            # --------------------------------------------------
-            # START
-            # --------------------------------------------------
 
             task_label = {
                 "website_visit": "Visit website",
@@ -2777,7 +2686,7 @@ async def run_account_cycle(
                 "REPEAT TASK",
                 "START",
                 f"{task_label} -> {task_id}",
-                row_key=task_row
+                row_key="activity"
             )
 
             start = await client.start_task(
@@ -2793,22 +2702,14 @@ async def run_account_cycle(
                     "REPEAT TASK",
                     "BUSY",
                     task_id,
-                    row_key=task_row
+                    row_key="activity"
                 )
 
                 continue
 
-            # --------------------------------------------------
-            # VERIFY WAIT
-            # --------------------------------------------------
-
             await asyncio.sleep(
                 TASK_VERIFY_WAIT
             )
-
-            # --------------------------------------------------
-            # CLAIM
-            # --------------------------------------------------
 
             claim = await client.claim_task(
                 task_id
@@ -2834,7 +2735,7 @@ async def run_account_cycle(
                     "REPEAT TASK",
                     "SUCCESS",
                     f"{task_id} | +{reward} ATF",
-                    row_key=task_row
+                    row_key="activity"
                 )
 
             else:
@@ -2843,9 +2744,8 @@ async def run_account_cycle(
                     account_id,
                     "REPEAT TASK",
                     "FAILED",
-                    f"{task_label} -> {task_id} | "
-                    f"{claim.get('message', 'unknown')}",
-                    row_key=task_row
+                    f"{task_label} -> {task_id}",
+                    row_key="activity"
                 )
 
             state_mgr.save(
@@ -2857,7 +2757,7 @@ async def run_account_cycle(
             )
 
         # ======================================================
-        # FINAL BALANCE
+        # FINAL BALANCE (BARIS PERTAMA & SLOT AKTIVITAS)
         # ======================================================
 
         await activity(
@@ -2865,7 +2765,7 @@ async def run_account_cycle(
             "BALANCE",
             "REFRESH",
             "Mengambil saldo terbaru...",
-            row_key="balance"
+            row_key="activity"
         )
 
         final_login = await client.login()
@@ -2923,12 +2823,18 @@ async def run_account_cycle(
 
         await activity(
             account_id,
+            "ACCOUNT",
+            "READY",
+            f"Bal={balance_after:.4f} ATF | Pend=0.0000 | Lvl={level_after}",
+            row_key="account"
+        )
+
+        await activity(
+            account_id,
             "BALANCE",
             "SUCCESS",
-            f"{balance_before:.4f} -> "
-            f"{balance_after:.4f} ATF | "
-            f"Gain={gain:+.4f}",
-            row_key="balance"
+            f"{balance_before:.4f} -> {balance_after:.4f} ATF (+{gain:.4f})",
+            row_key="activity"
         )
 
     except Exception as e:
@@ -2961,6 +2867,43 @@ async def run_account_cycle(
 
 
 # ==============================================================
+# INDIVIDUAL ACCOUNT WORKER
+# ==============================================================
+
+async def run_account_worker(account_id, state_mgr):
+
+    interval = int(CFG["cycle"].get("interval_seconds", 3600))
+
+    while True:
+
+        await run_account_cycle(account_id, state_mgr)
+
+        await activity(
+            account_id,
+            "MINING",
+            "WAIT",
+            "Proses selesai, menunggu cycle berikutnya",
+            row_key="activity"
+        )
+
+        remaining = interval
+        while remaining > 0:
+            minutes = remaining // 60
+            seconds = remaining % 60
+
+            await activity(
+                account_id,
+                "NEXT CYCLE",
+                "WAIT",
+                f"Cycle berikutnya dalam {minutes:02d}:{seconds:02d}",
+                row_key="next_cycle"
+            )
+
+            await asyncio.sleep(1)
+            remaining -= 1
+
+
+# ==============================================================
 # ACCOUNT DISCOVERY
 # ==============================================================
 
@@ -2981,37 +2924,6 @@ def get_existing_accounts():
     )
 
 
-def next_account_id():
-
-    accounts = get_existing_accounts()
-
-    numbers = []
-
-    for account in accounts:
-
-        try:
-
-            numbers.append(
-                int(
-                    account.split("_")[-1]
-                )
-            )
-
-        except Exception:
-
-            pass
-
-    next_num = (
-        max(numbers) + 1
-        if numbers
-        else 1
-    )
-
-    return (
-        f"acc_{next_num:03d}"
-    )
-
-
 # ==============================================================
 # FIRST RUN
 # ==============================================================
@@ -3027,25 +2939,9 @@ async def ensure_accounts():
     account_id = "acc_001"
 
     print()
-
     print("=" * 70)
-
-    print(
-        "ATF BOT — LOGIN TELEGRAM PERTAMA"
-    )
-
+    print("ATF BOT - LOGIN TELEGRAM PERTAMA")
     print("=" * 70)
-
-    print()
-
-    print(
-        "Belum ada Telegram session."
-    )
-
-    print(
-        f"Account yang akan dibuat: {account_id}"
-    )
-
     print()
 
     client = ATFClient(
@@ -3082,62 +2978,19 @@ async def run_loop():
     for account in accounts:
         DASHBOARD.register(account)
 
-    # Start exactly one Rich Live dashboard.
-    # All later updates replace this same screen region.
     DASHBOARD.start()
     DASHBOARD.render()
 
     state_mgr = StateManager(DATA_DIR)
 
     try:
-        while True:
 
-            # ------------------------------------------------------
-            # Refresh account list
-            # ------------------------------------------------------
-
-            accounts = get_existing_accounts()
-            DASHBOARD.accounts = accounts
-
-            for account in accounts:
-                DASHBOARD.register(account)
-
-            # ------------------------------------------------------
-            # Jalankan semua account
-            # ------------------------------------------------------
-
-            for account in accounts:
-                await run_account_cycle(account, state_mgr)
-                await asyncio.sleep(3)
-
-            # ------------------------------------------------------
-            # NEXT CYCLE
-            # ------------------------------------------------------
-
-            interval = int(
-                CFG["cycle"].get(
-                    "interval_seconds",
-                    3600
-                )
-            )
-
-            remaining = interval
-
-            while remaining > 0:
-                minutes = remaining // 60
-                seconds = remaining % 60
-
-                for account in accounts:
-                    await DASHBOARD.update(
-                        account,
-                        "NEXT CYCLE",
-                        "WAIT",
-                        f"Cycle berikutnya dalam {minutes:02d}:{seconds:02d}",
-                        row_key="next_cycle"
-                    )
-
-                await asyncio.sleep(1)
-                remaining -= 1
+        tasks = [
+            run_account_worker(account_id, state_mgr)
+            for account_id in accounts
+        ]
+        
+        await asyncio.gather(*tasks)
 
     finally:
         DASHBOARD.stop()
@@ -3158,7 +3011,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
 
         print()
-
-        print(
-            "Bot dihentikan."
-        )
+        print("Bot dihentikan.")
