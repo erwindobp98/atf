@@ -5,6 +5,7 @@ import re
 import sys
 import time
 import uuid
+import inspect
 
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -54,7 +55,7 @@ DEFAULT_CONFIG = {
         "interval_seconds": 3600,
         "task_verify_wait": 35,
         "boost_target_hours": 24,
-        "max_boosts": 8,
+        "max_boosts": 36,
         "boost_delay": 10,
         "task_wait_threshold_minutes": 12,
         "request_timeout": 30,
@@ -357,7 +358,26 @@ def get_user_agent(
 
 
 # ==============================================================
-# DASHBOARD (CLEAN & MINIMALIST 3-SLOT TABLE)
+# TIME FORMAT
+# ==============================================================
+
+def format_duration(seconds):
+    try:
+        seconds = max(0, int(seconds))
+    except Exception:
+        seconds = 0
+
+    days, seconds = divmod(seconds, 86400)
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+
+    if days > 0:
+        return f"{days}d {hours:02d}:{minutes:02d}:{seconds:02d}"
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+# ==============================================================
+# DASHBOARD (4-SLOT TABLE + LIVE BOOST MONITOR)
 # ==============================================================
 
 class Dashboard:
@@ -385,6 +405,12 @@ class Dashboard:
                     "status": "WAIT",
                     "detail": "Belum ada aktivitas",
                     "order": 2
+                },
+                "boost_live": {
+                    "activity": "BOOST LIVE",
+                    "status": "WAIT",
+                    "detail": "Menunggu boost...",
+                    "order": 3
                 },
                 "next_cycle": {
                     "activity": "NEXT CYCLE",
@@ -439,7 +465,12 @@ class Dashboard:
             else:
                 target_key = row_key
 
-            order = 1 if target_key == "account" else (3 if target_key == "next_cycle" else 2)
+            order = (
+                1 if target_key == "account"
+                else 4 if target_key == "next_cycle"
+                else 3 if target_key == "boost_live"
+                else 2
+            )
 
             self.rows[account_id][target_key] = {
                 "activity": activity,
@@ -498,6 +529,7 @@ class Dashboard:
             slots = [
                 account_rows.get("account", {"activity": "ACCOUNT", "status": "WAIT", "detail": "-"}),
                 account_rows.get("activity", {"activity": "MINING", "status": "WAIT", "detail": "-"}),
+                account_rows.get("boost_live", {"activity": "BOOST LIVE", "status": "WAIT", "detail": "-"}),
                 account_rows.get("next_cycle", {"activity": "NEXT CYCLE", "status": "WAIT", "detail": "-"})
             ]
 
@@ -1911,156 +1943,202 @@ class ATFClient:
         }
 
     # ==========================================================
-    # BOOST
+    # BOOST (SERVER-DRIVEN / REALTIME LIVE DISPLAY)
     # ==========================================================
 
     async def boost_until_target(
         self,
         user,
         target_hours=24,
-        max_boosts=8
+        max_boosts=846,
+        progress_callback=None
     ):
+        """
+        MAX SPEED / MAX BOOST.
 
+        Tidak memakai target_hours sebagai stop condition.
+        Server menentukan kapan activate_boost berhenti.
+        progress_callback mengirim status realtime ke dashboard.
+        """
         result = {
-
-            "boosts_done":
-                0,
-
-            "target_reached":
-                False,
-
-            "errors":
-                []
+            "boosts_done": 0,
+            "target_reached": False,
+            "server_stopped": False,
+            "errors": [],
+            "last_freeze": 0,
+            "last_status": "READY",
+            "last_reason": "",
         }
 
-        last_start = int(
-            user.get(
-                "last_mining_start"
-            )
-            or 0
-        )
+        current_user = dict(user or {})
+        max_boosts = max(0, int(max_boosts))
 
-        if last_start == 0:
+        async def emit(status, **data):
+            result["last_status"] = status
+            if "reason" in data:
+                result["last_reason"] = str(data["reason"])
 
+            payload = {
+                "status": status,
+                "boosts_done": result["boosts_done"],
+                "max_boosts": max_boosts,
+                "freeze": result["last_freeze"],
+                "reason": result["last_reason"],
+                **data,
+            }
+
+            if progress_callback:
+                try:
+                    value = progress_callback(payload)
+                    if inspect.isawaitable(value):
+                        await value
+                except Exception:
+                    pass
+
+        if max_boosts <= 0:
+            await emit("DONE", reason="max_boosts=0")
             return result
 
-        now = int(
-            time.time()
+        await emit(
+            "RUNNING",
+            boost_no=1,
+            next_boost=0,
+            reason=f"Memulai Max Speed | limit={max_boosts}"
         )
 
-        freezes_at = int(
-            user.get(
-                "mining_freezes_at"
-            )
-            or 0
-        )
-
-        if (
-            freezes_at > 0
-            and now >= freezes_at
-        ):
-
-            return result
-
-        target = (
-            now
-            + int(
-                target_hours
-                * 3600
-            )
-        )
-
-        if freezes_at >= target:
-
-            result[
-                "target_reached"
-            ] = True
-
-            return result
-
-        current_user = dict(
-            user
-        )
-
-        for index in range(
-            max_boosts
-        ):
+        for index in range(max_boosts):
+            boost_no = index + 1
 
             preview = float(
-                current_user.get("pending_reward") 
-                or current_user.get("unclaimed_reward") 
-                or current_user.get("mined_unclaimed") 
-                or current_user.get("unclaimed") 
-                or current_user.get("pending_balance") 
+                current_user.get("pending_reward")
+                or current_user.get("unclaimed_reward")
+                or current_user.get("mined_unclaimed")
+                or current_user.get("unclaimed")
+                or current_user.get("pending_balance")
                 or 0
             )
 
-            response = await self.activate_boost(
-                preview
+            await emit(
+                "RUNNING",
+                boost_no=boost_no,
+                next_boost=0,
+                reason=f"Mengirim activate_boost #{boost_no}/{max_boosts}"
             )
 
-            if response.get(
-                "status"
-            ) != "success":
-
+            try:
+                response = await self.activate_boost(preview)
+            except Exception as exc:
+                reason = str(exc)
+                result["last_status"] = "ERROR"
+                result["last_reason"] = reason
+                result["errors"].append(reason)
+                await emit(
+                    "ERROR",
+                    boost_no=boost_no,
+                    next_boost=0,
+                    reason=reason
+                )
                 break
 
-            result[
-                "boosts_done"
-            ] += 1
+            if not isinstance(response, dict):
+                reason = "Response server bukan JSON object"
+                result["server_stopped"] = True
+                result["last_status"] = "STOP"
+                result["last_reason"] = reason
+                result["errors"].append(reason)
+                await emit(
+                    "STOP",
+                    boost_no=boost_no,
+                    next_boost=0,
+                    reason=reason
+                )
+                break
+
+            status = str(response.get("status", "")).lower()
 
             new_freeze = int(
-                response.get(
-                    "mining_freezes_at",
-                    0
-                )
+                response.get("mining_freezes_at")
+                or current_user.get("mining_freezes_at")
                 or 0
             )
+            result["last_freeze"] = new_freeze
 
-            abuse_watch = response.get(
-                "abuse_watch"
-            )
-
-            if abuse_watch:
-
-                ban_until = int(
-                    abuse_watch.get(
-                        "temporary_ban_until",
-                        0
-                    )
-                    or 0
+            if status != "success":
+                reason = (
+                    response.get("message")
+                    or response.get("error")
+                    or response.get("detail")
+                    or response.get("reason")
+                    or f"Server status={status or 'unknown'}"
                 )
-
-                if ban_until > 0:
-
-                    break
-
-            if new_freeze >= target:
-
-                result[
-                    "target_reached"
-                ] = True
-
+                result["server_stopped"] = True
+                result["last_status"] = "STOP"
+                result["last_reason"] = str(reason)
+                await emit(
+                    "STOP",
+                    boost_no=boost_no,
+                    next_boost=0,
+                    reason=str(reason)
+                )
                 break
 
-            current_user[
-                "pending_reward"
-            ] = response.get(
+            result["boosts_done"] += 1
+            current_user["mining_freezes_at"] = new_freeze
+            current_user["pending_reward"] = response.get(
                 "pending_reward",
                 preview
             )
 
-            if index < max_boosts - 1:
+            await emit(
+                "SUCCESS",
+                boost_no=boost_no,
+                next_boost=BOOST_DELAY,
+                reason=f"Boost #{boost_no}/{max_boosts} berhasil"
+            )
 
-                await asyncio.sleep(
-                    BOOST_DELAY
+            abuse_watch = response.get("abuse_watch") or {}
+            ban_until = int(
+                abuse_watch.get("temporary_ban_until") or 0
+            )
+
+            if ban_until > 0:
+                reason = f"Temporary ban sampai {ban_until}"
+                result["server_stopped"] = True
+                result["last_status"] = "STOP"
+                result["last_reason"] = reason
+                await emit(
+                    "STOP",
+                    boost_no=boost_no,
+                    next_boost=0,
+                    reason=reason
                 )
+                break
+
+            if boost_no >= max_boosts:
+                reason = f"Max boost {max_boosts} tercapai"
+                result["last_status"] = "DONE"
+                result["last_reason"] = reason
+                await emit(
+                    "DONE",
+                    boost_no=boost_no,
+                    next_boost=0,
+                    reason=reason
+                )
+                break
+
+            for remaining in range(int(BOOST_DELAY), 0, -1):
+                await emit(
+                    "WAIT",
+                    boost_no=boost_no,
+                    next_boost=remaining,
+                    reason=(
+                        f"Boost #{boost_no} sukses | "
+                        f"boost berikutnya dalam {remaining:02d}s"
+                    )
+                )
+                await asyncio.sleep(1)
 
         return result
-
-    # ==========================================================
-    # TASK API
-    # ==========================================================
 
     async def start_task(
         self,
@@ -2376,7 +2454,7 @@ async def run_account_cycle(
             )
 
         # ======================================================
-        # BOOST (SLOT AKTIVITAS)
+        # BOOST (SLOT AKTIVITAS & REALTIME PROGRESS CALLBACK)
         # ======================================================
 
         if user.get(
@@ -2387,48 +2465,92 @@ async def run_account_cycle(
                 account_id,
                 "BOOST",
                 "RUNNING",
-                "Menghitung target boost...",
+                "Memulai Max Speed server-driven...",
                 row_key="activity"
             )
 
+            async def boost_progress(info):
+                status = str(info.get("status", "WAIT"))
+                boost_no = int(info.get("boost_no", 0) or 0)
+                max_b = int(info.get("max_boosts", 0) or 0)
+                remaining = int(info.get("next_boost", 0) or 0)
+                freeze = int(info.get("freeze", 0) or 0)
+                reason = str(info.get("reason", "") or "")
+
+                freeze_str = format_duration(max(0, freeze - int(time.time()))) if freeze > 0 else "-"
+
+                if status == "WAIT":
+                    detail = (
+                        f"Boost #{boost_no}/{max_b} OK | "
+                        f"Next={remaining:02d}s | "
+                        f"Freeze={freeze_str}"
+                    )
+                elif status == "RUNNING":
+                    detail = (
+                        f"Boost #{boost_no}/{max_b} RUNNING | "
+                        f"Freeze={freeze_str} | {reason}"
+                    )
+                elif status == "SUCCESS":
+                    detail = (
+                        f"Boost #{boost_no}/{max_b} SUCCESS | "
+                        f"Freeze={freeze_str} | "
+                        f"Next={remaining:02d}s"
+                    )
+                elif status == "STOP":
+                    detail = (
+                        f"STOP | {reason} | "
+                        f"Freeze={freeze_str}"
+                    )
+                elif status == "ERROR":
+                    detail = f"ERROR | {reason}"
+                elif status == "DONE":
+                    detail = (
+                        f"DONE | {reason} | "
+                        f"Total={info.get('boosts_done', 0)} | "
+                        f"Freeze={freeze_str}"
+                    )
+                else:
+                    detail = reason
+
+                await DASHBOARD.update(
+                    account_id,
+                    "BOOST LIVE",
+                    status,
+                    detail,
+                    row_key="boost_live"
+                )
+
             boost = await client.boost_until_target(
-
                 user,
-
                 target_hours=float(
                     CFG["cycle"].get(
                         "boost_target_hours",
                         24
                     )
                 ),
-
                 max_boosts=int(
                     CFG["cycle"].get(
                         "max_boosts",
-                        8
+                        846
                     )
-                )
+                ),
+                progress_callback=boost_progress
             )
 
-            if boost[
-                "boosts_done"
-            ] > 0:
-
+            if boost["boosts_done"] > 0:
                 await activity(
                     account_id,
                     "BOOST",
                     "SUCCESS",
-                    f"{boost['boosts_done']}x | Target={'YES' if boost['target_reached'] else 'NO'}",
+                    f"Selesai {boost['boosts_done']}x boost | Reason={boost.get('last_reason', '-')}",
                     row_key="activity"
                 )
-
             else:
-
                 await activity(
                     account_id,
                     "BOOST",
                     "SKIP",
-                    "Tidak ada boost yang diperlukan",
+                    f"Boost selesai tanpa aksi | {boost.get('last_reason', '-')}",
                     row_key="activity"
                 )
 
@@ -2882,7 +3004,6 @@ async def run_account_worker(account_id, state_mgr):
 
         user_data = await run_account_cycle(account_id, state_mgr)
 
-        # Mengambil pending reward terbaru jika user_data tersedia
         pending = 0.0
         if user_data:
             pending = float(
